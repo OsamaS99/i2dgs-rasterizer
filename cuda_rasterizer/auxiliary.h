@@ -25,39 +25,15 @@
 #define NORMAL_OFFSET 2 
 #define MIDDEPTH_OFFSET 5
 #define DISTORTION_OFFSET 6
-// #define MEDIAN_WEIGHT_OFFSET 7
 
-// distortion helper macros
 #define BACKFACE_CULL 1
 #define DUAL_VISIABLE 1
-// #define NEAR_PLANE 0.2
-// #define FAR_PLANE 100.0
 #define DETACH_WEIGHT 0
 
 __device__ const float near_n = 0.2;
 __device__ const float far_n = 100.0;
 __device__ const float FilterSize = 0.707106; // sqrt(2) / 2
 __device__ const float FilterInvSquare = 2.0f;
-
-// Spherical harmonics coefficients
-__device__ const float SH_C0 = 0.28209479177387814f;
-__device__ const float SH_C1 = 0.4886025119029199f;
-__device__ const float SH_C2[] = {
-	1.0925484305920792f,
-	-1.0925484305920792f,
-	0.31539156525252005f,
-	-1.0925484305920792f,
-	0.5462742152960396f
-};
-__device__ const float SH_C3[] = {
-	-0.5900435899266435f,
-	2.890611442640554f,
-	-0.4570457994644658f,
-	0.3731763325901154f,
-	-0.4570457994644658f,
-	1.445305721320277f,
-	-0.5900435899266435f
-};
 
 __forceinline__ __device__ float ndc2Pix(float v, int S)
 {
@@ -191,13 +167,12 @@ __forceinline__ __device__ bool in_frustum(int idx,
 {
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
 
-	// Bring points to screen space
 	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
 	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 	p_view = transformPoint4x3(p_orig, viewmatrix);
 
-	if (p_view.z <= 0.2f)// || ((p_proj.x < -1.3 || p_proj.x > 1.3 || p_proj.y < -1.3 || p_proj.y > 1.3)))
+	if (p_view.z <= 0.2f)
 	{
 		if (prefiltered)
 		{
@@ -209,9 +184,7 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	return true;
 }
 
-// adopt from gsplat: https://github.com/nerfstudio-project/gsplat/blob/main/gsplat/cuda/csrc/forward.cu
 inline __device__ glm::mat3 quat_to_rotmat(const glm::vec4 quat) {
-	// quat to rotation matrix
 	float s = rsqrtf(
 		quat.w * quat.w + quat.x * quat.x + quat.y * quat.y + quat.z * quat.z
 	);
@@ -220,7 +193,6 @@ inline __device__ glm::mat3 quat_to_rotmat(const glm::vec4 quat) {
 	float y = quat.z * s;
 	float z = quat.w * s;
 
-	// glm matrices are column-major
 	return glm::mat3(
 		1.f - 2.f * (y * y + z * z),
 		2.f * (x * y + w * z),
@@ -234,7 +206,6 @@ inline __device__ glm::mat3 quat_to_rotmat(const glm::vec4 quat) {
 	);
 }
 
-
 inline __device__ glm::vec4
 quat_to_rotmat_vjp(const glm::vec4 quat, const glm::mat3 v_R) {
 	float s = rsqrtf(
@@ -246,52 +217,39 @@ quat_to_rotmat_vjp(const glm::vec4 quat, const glm::mat3 v_R) {
 	float z = quat.w * s;
 
 	glm::vec4 v_quat;
-	// v_R is COLUMN MAJOR
-	// w element stored in x field
 	v_quat.x =
 		2.f * (
-				  // v_quat.w = 2.f * (
-				  x * (v_R[1][2] - v_R[2][1]) + y * (v_R[2][0] - v_R[0][2]) +
-				  z * (v_R[0][1] - v_R[1][0])
-			  );
-	// x element in y field
+			x * (v_R[1][2] - v_R[2][1]) + y * (v_R[2][0] - v_R[0][2]) +
+			z * (v_R[0][1] - v_R[1][0])
+		);
 	v_quat.y =
 		2.f *
 		(
-			// v_quat.x = 2.f * (
 			-2.f * x * (v_R[1][1] + v_R[2][2]) + y * (v_R[0][1] + v_R[1][0]) +
 			z * (v_R[0][2] + v_R[2][0]) + w * (v_R[1][2] - v_R[2][1])
 		);
-	// y element in z field
 	v_quat.z =
 		2.f *
 		(
-			// v_quat.y = 2.f * (
 			x * (v_R[0][1] + v_R[1][0]) - 2.f * y * (v_R[0][0] + v_R[2][2]) +
 			z * (v_R[1][2] + v_R[2][1]) + w * (v_R[2][0] - v_R[0][2])
 		);
-	// z element in w field
 	v_quat.w =
 		2.f *
 		(
-			// v_quat.z = 2.f * (
 			x * (v_R[0][2] + v_R[2][0]) + y * (v_R[1][2] + v_R[2][1]) -
 			2.f * z * (v_R[0][0] + v_R[1][1]) + w * (v_R[0][1] - v_R[1][0])
 		);
 	return v_quat;
 }
 
-
 inline __device__ glm::mat3
 scale_to_mat(const glm::vec2 scale, const float glob_scale) {
 	glm::mat3 S = glm::mat3(1.f);
 	S[0][0] = glob_scale * scale.x;
 	S[1][1] = glob_scale * scale.y;
-	// S[2][2] = glob_scale * scale.z;
 	return S;
 }
-
-
 
 #define CHECK_CUDA(A, debug) \
 A; if(debug) { \

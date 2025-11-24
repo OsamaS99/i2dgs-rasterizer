@@ -11,7 +11,6 @@
 
 #pragma once
 
-#include <iostream>
 #include <vector>
 #include "rasterizer.h"
 #include <cuda_runtime_api.h>
@@ -31,12 +30,13 @@ namespace CudaRasterizer
 		size_t scan_size;
 		float* depths;
 		char* scanning_space;
-		bool* clamped;
 		int* internal_radii;
 		float2* means2D;
 		float* transMat;
 		float4* normal_opacity;
 		float* rgb;
+		float* roughness;
+		float* metallic;
 		uint32_t* point_offsets;
 		uint32_t* tiles_touched;
 
