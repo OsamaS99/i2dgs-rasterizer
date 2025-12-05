@@ -26,7 +26,7 @@ __global__ void compute_relocation_kernel(int N, float *opacities, float *scales
     float coeff = (opacities[idx] / denom_sum);
     for (int i = 0; i < 2; ++i)
         new_scales[idx * 2 + i] = coeff * scales[idx * 2 + i];
-    }
+}
 
 std::tuple<torch::Tensor, torch::Tensor>
 compute_relocation_tensor(torch::Tensor &opacities, torch::Tensor &scales,

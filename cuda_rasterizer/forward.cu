@@ -235,6 +235,9 @@ renderCUDA(
 	__shared__ float3 collected_Tu[BLOCK_SIZE];
 	__shared__ float3 collected_Tv[BLOCK_SIZE];
 	__shared__ float3 collected_Tw[BLOCK_SIZE];
+	__shared__ float collected_albedo[CHANNELS * BLOCK_SIZE];
+	__shared__ float collected_roughness[BLOCK_SIZE];
+	__shared__ float collected_metallic[BLOCK_SIZE];
 
 	// Initialize helper variables
 	float T = 1.0f;
@@ -272,6 +275,10 @@ renderCUDA(
 			collected_Tu[block.thread_rank()] = {transMats[9 * coll_id+0], transMats[9 * coll_id+1], transMats[9 * coll_id+2]};
 			collected_Tv[block.thread_rank()] = {transMats[9 * coll_id+3], transMats[9 * coll_id+4], transMats[9 * coll_id+5]};
 			collected_Tw[block.thread_rank()] = {transMats[9 * coll_id+6], transMats[9 * coll_id+7], transMats[9 * coll_id+8]};
+			for (int ch = 0; ch < CHANNELS; ch++)
+				collected_albedo[ch * BLOCK_SIZE + block.thread_rank()] = albedo[coll_id * CHANNELS + ch];
+			collected_roughness[block.thread_rank()] = roughness[coll_id];
+			collected_metallic[block.thread_rank()] = metallic[coll_id];
 		}
 		block.sync();
 
@@ -307,7 +314,7 @@ renderCUDA(
 			if (power > 0.0f)
 				continue;
 
-			float alpha = min(0.99f, opa * exp(power));
+			float alpha = min(0.99f, opa * __expf(power));
 			if (alpha < 1.0f / 255.0f)
 				continue;
 			float test_T = T * (1 - alpha);
@@ -335,11 +342,11 @@ renderCUDA(
 
 			// Accumulate albedo
 			for (int ch = 0; ch < CHANNELS; ch++)
-				C[ch] += albedo[collected_id[j] * CHANNELS + ch] * w;
+				C[ch] += collected_albedo[ch * BLOCK_SIZE + j] * w;
 			
 			// Accumulate roughness and metallic
-			R_acc += roughness[collected_id[j]] * w;
-			M_acc += metallic[collected_id[j]] * w;
+			R_acc += collected_roughness[j] * w;
+			M_acc += collected_metallic[j] * w;
 
 			T = test_T;
 
