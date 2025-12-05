@@ -168,7 +168,7 @@ RasterizeGaussiansBackwardCUDA(
 	const int W = dL_dout_color.size(2);
 
 	torch::Tensor dL_dmeans3D = torch::zeros({P, 3}, means3D.options());
-	torch::Tensor dL_dmeans2D = torch::zeros({P, 3}, means3D.options());
+	torch::Tensor dL_dmeans2D = torch::zeros({P, 4}, means3D.options());
 	torch::Tensor dL_dalbedo = torch::zeros({P, NUM_CHANNELS}, means3D.options());
 	torch::Tensor dL_droughness = torch::zeros({P, 1}, means3D.options());
 	torch::Tensor dL_dmetallic = torch::zeros({P, 1}, means3D.options());
