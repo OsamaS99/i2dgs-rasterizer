@@ -18,8 +18,8 @@ from . import _C
 class RasterizationOutputs(NamedTuple):
     """Outputs from the Gaussian rasterizer.
     
-    Core material outputs (same level as color):
-        color: [3, H, W] - Rendered albedo color
+    Core material outputs:
+        albedo: [3, H, W] - Rendered albedo
         roughness: [H, W] - Rendered roughness
         metallic: [H, W] - Rendered metallic
         
@@ -33,7 +33,7 @@ class RasterizationOutputs(NamedTuple):
     Other:
         radii: [N] - Screen-space radii of Gaussians
     """
-    color: torch.Tensor        # [3, H, W] - Rendered albedo color
+    albedo: torch.Tensor       # [3, H, W] - Rendered albedo
     roughness: torch.Tensor    # [H, W] - Rendered roughness
     metallic: torch.Tensor     # [H, W] - Rendered metallic
     depth: torch.Tensor        # [1, H, W] - Rendered depth
@@ -60,7 +60,7 @@ def rasterize_gaussians(
     cov3Ds_precomp,
     raster_settings,
 ) -> RasterizationOutputs:
-    color, out_roughness, out_metallic, depth, alpha, normal, middepth, distortion, radii = _RasterizeGaussians.apply(
+    out_albedo, out_roughness, out_metallic, depth, alpha, normal, middepth, distortion, radii = _RasterizeGaussians.apply(
         means3D,
         means2D,
         albedo,
@@ -73,7 +73,7 @@ def rasterize_gaussians(
         raster_settings,
     )
     return RasterizationOutputs(
-        color=color,
+        albedo=out_albedo,
         roughness=out_roughness,
         metallic=out_metallic,
         depth=depth,
@@ -125,13 +125,13 @@ class _RasterizeGaussians(torch.autograd.Function):
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args)
             try:
-                num_rendered, color, out_roughness, out_metallic, auxiliary, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+                num_rendered, out_albedo, out_roughness, out_metallic, auxiliary, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_fw.dump")
                 print("\nAn error occured in forward. Please forward snapshot_fw.dump for debugging.")
                 raise ex
         else:
-            num_rendered, color, out_roughness, out_metallic, auxiliary, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
+            num_rendered, out_albedo, out_roughness, out_metallic, auxiliary, radii, geomBuffer, binningBuffer, imgBuffer = _C.rasterize_gaussians(*args)
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
@@ -145,10 +145,10 @@ class _RasterizeGaussians(torch.autograd.Function):
         out_middepth = auxiliary[5:6]     # [1, H, W]
         out_distortion = auxiliary[6:7]   # [1, H, W]
         
-        return color, out_roughness, out_metallic, out_depth, out_alpha, out_normal, out_middepth, out_distortion, radii
+        return out_albedo, out_roughness, out_metallic, out_depth, out_alpha, out_normal, out_middepth, out_distortion, radii
 
     @staticmethod
-    def backward(ctx, grad_out_color, grad_roughness, grad_metallic, grad_depth, grad_alpha, grad_normal, grad_middepth, grad_distortion, grad_radii):
+    def backward(ctx, grad_out_albedo, grad_roughness, grad_metallic, grad_depth, grad_alpha, grad_normal, grad_middepth, grad_distortion, grad_radii):
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
         raster_settings = ctx.raster_settings
@@ -178,7 +178,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.projmatrix, 
             raster_settings.tanfovx, 
             raster_settings.tanfovy, 
-            grad_out_color,
+            grad_out_albedo,
             grad_roughness,
             grad_metallic,
             grad_auxiliary,

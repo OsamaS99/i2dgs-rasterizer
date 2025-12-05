@@ -41,7 +41,7 @@ namespace FORWARD
 		float2* points_xy_image,
 		float* depths,
 		float* transMats,
-		float* colors,
+		float* out_albedo,
 		float* out_roughness,
 		float* out_metallic,
 		float4* normal_opacity,
@@ -49,7 +49,6 @@ namespace FORWARD
 		uint32_t* tiles_touched,
 		bool prefiltered);
 
-	// Main rasterization method.
 	void render(
 		const dim3 grid, dim3 block,
 		const uint2* ranges,
@@ -57,7 +56,7 @@ namespace FORWARD
 		int W, int H,
 		float focal_x, float focal_y,
 		const float2* points_xy_image,
-		const float* features,
+		const float* albedo,
 		const float* roughness,
 		const float* metallic,
 		const float* transMats,
@@ -65,7 +64,7 @@ namespace FORWARD
 		const float4* normal_opacity,
 		float* final_T,
 		uint32_t* n_contrib,
-		float* out_color,
+		float* out_albedo,
 		float* out_roughness,
 		float* out_metallic,
 		float* out_others);

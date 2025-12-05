@@ -72,7 +72,7 @@ RasterizeGaussiansCUDA(
 	auto float_opts = means3D.options().dtype(torch::kFloat32);
 
 	// Core material outputs (same level as color)
-	torch::Tensor out_color = torch::zeros({NUM_CHANNELS, H, W}, float_opts);
+	torch::Tensor out_albedo = torch::zeros({NUM_CHANNELS, H, W}, float_opts);
 	torch::Tensor out_roughness = torch::zeros({H, W}, float_opts);
 	torch::Tensor out_metallic = torch::zeros({H, W}, float_opts);
 	// Auxiliary outputs (depth, alpha, normal, middepth, distortion)
@@ -112,14 +112,14 @@ RasterizeGaussiansCUDA(
 			tan_fovx,
 			tan_fovy,
 			prefiltered,
-			out_color.contiguous().data<float>(),
+			out_albedo.contiguous().data<float>(),
 			out_roughness.contiguous().data<float>(),
 			out_metallic.contiguous().data<float>(),
 			out_auxiliary.contiguous().data<float>(),
 			radii.contiguous().data<int>(),
 			debug);
 	}
-	return std::make_tuple(rendered, out_color, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer);
+	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
@@ -137,7 +137,7 @@ RasterizeGaussiansBackwardCUDA(
 	const torch::Tensor& projmatrix,
 	const float tan_fovx,
 	const float tan_fovy,
-	const torch::Tensor& dL_dout_color,
+	const torch::Tensor& dL_dout_albedo,
 	const torch::Tensor& dL_dout_roughness,
 	const torch::Tensor& dL_dout_metallic,
 	const torch::Tensor& dL_dout_auxiliary,
@@ -164,8 +164,8 @@ RasterizeGaussiansBackwardCUDA(
 	CHECK_CUDA(geomBuffer);
 
 	const int P = means3D.size(0);
-	const int H = dL_dout_color.size(1);
-	const int W = dL_dout_color.size(2);
+	const int H = dL_dout_albedo.size(1);
+	const int W = dL_dout_albedo.size(2);
 
 	torch::Tensor dL_dmeans3D = torch::zeros({P, 3}, means3D.options());
 	torch::Tensor dL_dmeans2D = torch::zeros({P, 4}, means3D.options());
@@ -200,7 +200,7 @@ RasterizeGaussiansBackwardCUDA(
 			reinterpret_cast<char*>(geomBuffer.contiguous().data_ptr()),
 			reinterpret_cast<char*>(binningBuffer.contiguous().data_ptr()),
 			reinterpret_cast<char*>(imageBuffer.contiguous().data_ptr()),
-			dL_dout_color.contiguous().data<float>(),
+			dL_dout_albedo.contiguous().data<float>(),
 			dL_dout_roughness.contiguous().data<float>(),
 			dL_dout_metallic.contiguous().data<float>(),
 			dL_dout_auxiliary.contiguous().data<float>(),

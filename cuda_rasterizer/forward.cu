@@ -107,7 +107,7 @@ __global__ void preprocessCUDA(int P,
 	float2* points_xy_image,
 	float* depths,
 	float* transMats,
-	float* rgb,
+	float* out_albedo,
 	float* out_roughness,
 	float* out_metallic,
 	float4* normal_opacity,
@@ -177,9 +177,9 @@ __global__ void preprocessCUDA(int P,
 		return;
 
 	// Copy material properties
-	rgb[idx * C + 0] = albedo[idx * C + 0];
-	rgb[idx * C + 1] = albedo[idx * C + 1];
-	rgb[idx * C + 2] = albedo[idx * C + 2];
+	out_albedo[idx * C + 0] = albedo[idx * C + 0];
+	out_albedo[idx * C + 1] = albedo[idx * C + 1];
+	out_albedo[idx * C + 2] = albedo[idx * C + 2];
 	out_roughness[idx] = roughness[idx];
 	out_metallic[idx] = metallic[idx];
 
@@ -199,7 +199,7 @@ renderCUDA(
 	int W, int H,
 	float focal_x, float focal_y,
 	const float2* __restrict__ points_xy_image,
-	const float* __restrict__ features,
+	const float* __restrict__ albedo,
 	const float* __restrict__ roughness,
 	const float* __restrict__ metallic,
 	const float* __restrict__ transMats,
@@ -207,7 +207,7 @@ renderCUDA(
 	const float4* __restrict__ normal_opacity,
 	float* __restrict__ final_T,
 	uint32_t* __restrict__ n_contrib,
-	float* __restrict__ out_color,
+	float* __restrict__ out_albedo,
 	float* __restrict__ out_roughness,
 	float* __restrict__ out_metallic,
 	float* __restrict__ out_others)
@@ -335,7 +335,7 @@ renderCUDA(
 
 			// Accumulate albedo
 			for (int ch = 0; ch < CHANNELS; ch++)
-				C[ch] += features[collected_id[j] * CHANNELS + ch] * w;
+				C[ch] += albedo[collected_id[j] * CHANNELS + ch] * w;
 			
 			// Accumulate roughness and metallic
 			R_acc += roughness[collected_id[j]] * w;
@@ -354,7 +354,7 @@ renderCUDA(
 		
 		// Core material outputs
 		for (int ch = 0; ch < CHANNELS; ch++)
-			out_color[ch * H * W + pix_id] = C[ch];
+			out_albedo[ch * H * W + pix_id] = C[ch];
 		out_roughness[pix_id] = R_acc;
 		out_metallic[pix_id] = M_acc;
 
@@ -378,7 +378,7 @@ void FORWARD::render(
 	int W, int H,
 	float focal_x, float focal_y,
 	const float2* means2D,
-	const float* colors,
+	const float* albedo,
 	const float* roughness,
 	const float* metallic,
 	const float* transMats,
@@ -386,7 +386,7 @@ void FORWARD::render(
 	const float4* normal_opacity,
 	float* final_T,
 	uint32_t* n_contrib,
-	float* out_color,
+	float* out_albedo,
 	float* out_roughness,
 	float* out_metallic,
 	float* out_others)
@@ -397,7 +397,7 @@ void FORWARD::render(
 		W, H,
 		focal_x, focal_y,
 		means2D,
-		colors,
+		albedo,
 		roughness,
 		metallic,
 		transMats,
@@ -405,7 +405,7 @@ void FORWARD::render(
 		normal_opacity,
 		final_T,
 		n_contrib,
-		out_color,
+		out_albedo,
 		out_roughness,
 		out_metallic,
 		out_others);
@@ -431,7 +431,7 @@ void FORWARD::preprocess(int P,
 	float2* means2D,
 	float* depths,
 	float* transMats,
-	float* rgb,
+	float* out_albedo,
 	float* out_roughness,
 	float* out_metallic,
 	float4* normal_opacity,
@@ -460,7 +460,7 @@ void FORWARD::preprocess(int P,
 		means2D,
 		depths,
 		transMats,
-		rgb,
+		out_albedo,
 		out_roughness,
 		out_metallic,
 		normal_opacity,

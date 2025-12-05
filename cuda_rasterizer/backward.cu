@@ -25,7 +25,7 @@ renderCUDA(
 	float focal_x, float focal_y,
 	const float2* __restrict__ points_xy_image,
 	const float4* __restrict__ normal_opacity,
-	const float* __restrict__ colors,
+	const float* __restrict__ albedo,
 	const float* __restrict__ roughness,
 	const float* __restrict__ metallic,
 	const float* __restrict__ transMats,
@@ -40,7 +40,7 @@ renderCUDA(
 	float4* __restrict__ dL_dmean2D,
 	float* __restrict__ dL_dnormal3D,
 	float* __restrict__ dL_dopacity,
-	float* __restrict__ dL_dcolors,
+	float* __restrict__ dL_dalbedo,
 	float* __restrict__ dL_droughness,
 	float* __restrict__ dL_dmetallic)
 {
@@ -63,7 +63,7 @@ renderCUDA(
 	__shared__ int collected_id[BLOCK_SIZE];
 	__shared__ float2 collected_xy[BLOCK_SIZE];
 	__shared__ float4 collected_normal_opacity[BLOCK_SIZE];
-	__shared__ float collected_colors[C * BLOCK_SIZE];
+	__shared__ float collected_albedo[C * BLOCK_SIZE];
 	__shared__ float collected_roughness[BLOCK_SIZE];
 	__shared__ float collected_metallic[BLOCK_SIZE];
 	__shared__ float3 collected_Tu[BLOCK_SIZE];
@@ -147,7 +147,7 @@ renderCUDA(
 			collected_Tv[block.thread_rank()] = {transMats[9 * coll_id+3], transMats[9 * coll_id+4], transMats[9 * coll_id+5]};
 			collected_Tw[block.thread_rank()] = {transMats[9 * coll_id+6], transMats[9 * coll_id+7], transMats[9 * coll_id+8]};
 			for (int i = 0; i < C; i++)
-				collected_colors[i * BLOCK_SIZE + block.thread_rank()] = colors[coll_id * C + i];
+				collected_albedo[i * BLOCK_SIZE + block.thread_rank()] = albedo[coll_id * C + i];
 			collected_roughness[block.thread_rank()] = roughness[coll_id];
 			collected_metallic[block.thread_rank()] = metallic[coll_id];
 		}
@@ -199,13 +199,13 @@ renderCUDA(
 			// Gradient for colors (albedo)
 			for (int ch = 0; ch < C; ch++)
 			{
-				const float c = collected_colors[ch * BLOCK_SIZE + j];
+				const float c = collected_albedo[ch * BLOCK_SIZE + j];
 				accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
 				last_color[ch] = c;
 
 				const float dL_dchannel = dL_dpixel[ch];
 				dL_dalpha += (c - accum_rec[ch]) * dL_dchannel;
-				atomicAdd(&(dL_dcolors[global_id * C + ch]), dchannel_dcolor * dL_dchannel);
+				atomicAdd(&(dL_dalbedo[global_id * C + ch]), dchannel_dcolor * dL_dchannel);
 			}
 
 			// Gradient for roughness
@@ -459,7 +459,7 @@ __global__ void preprocessCUDA(
 	const glm::vec3* campos, 
 	float* dL_dtransMats,
 	const float* dL_dnormal3Ds,
-	float* dL_dcolors,
+	float* dL_dalbedo,
 	float4* dL_dmean2Ds,
 	glm::vec3* dL_dmean3Ds,
 	glm::vec2* dL_dscales,
@@ -507,7 +507,7 @@ void BACKWARD::preprocess(
 	float4* dL_dmean2Ds,
 	const float* dL_dnormal3Ds,
 	float* dL_dtransMats,
-	float* dL_dcolors,
+	float* dL_dalbedo,
 	glm::vec3* dL_dmean3Ds,
 	glm::vec2* dL_dscales,
 	glm::vec4* dL_drots)
@@ -529,7 +529,7 @@ void BACKWARD::preprocess(
 		campos,	
 		dL_dtransMats,
 		dL_dnormal3Ds,
-		dL_dcolors,
+		dL_dalbedo,
 		dL_dmean2Ds,
 		dL_dmean3Ds,
 		dL_dscales,
@@ -545,7 +545,7 @@ void BACKWARD::render(
 	float focal_x, float focal_y,
 	const float2* means2D,
 	const float4* normal_opacity,
-	const float* colors,
+	const float* albedo,
 	const float* roughness,
 	const float* metallic,
 	const float* transMats,
@@ -560,7 +560,7 @@ void BACKWARD::render(
 	float4* dL_dmean2D,
 	float* dL_dnormal3D,
 	float* dL_dopacity,
-	float* dL_dcolors,
+	float* dL_dalbedo,
 	float* dL_droughness,
 	float* dL_dmetallic)
 {
@@ -571,7 +571,7 @@ void BACKWARD::render(
 		focal_x, focal_y,
 		means2D,
 		normal_opacity,
-		colors,
+		albedo,
 		roughness,
 		metallic,
 		transMats,
@@ -586,7 +586,7 @@ void BACKWARD::render(
 		dL_dmean2D,
 		dL_dnormal3D,
 		dL_dopacity,
-		dL_dcolors,
+		dL_dalbedo,
 		dL_droughness,
 		dL_dmetallic);
 }

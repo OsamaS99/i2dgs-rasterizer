@@ -143,7 +143,7 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 	obtain(chunk, geom.means2D, P, 128);
 	obtain(chunk, geom.transMat, P * 9, 128);
 	obtain(chunk, geom.normal_opacity, P, 128);
-	obtain(chunk, geom.rgb, P * 3, 128);
+	obtain(chunk, geom.albedo, P * 3, 128);
 	obtain(chunk, geom.roughness, P, 128);
 	obtain(chunk, geom.metallic, P, 128);
 	obtain(chunk, geom.tiles_touched, P, 128);
@@ -245,7 +245,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.means2D,
 		geomState.depths,
 		geomState.transMat,
-		geomState.rgb,
+		geomState.albedo,
 		geomState.roughness,
 		geomState.metallic,
 		geomState.normal_opacity,
@@ -298,7 +298,7 @@ int CudaRasterizer::Rasterizer::forward(
 	CHECK_CUDA(, debug)
 
 	// Let each tile blend its range of Gaussians independently in parallel
-	const float* albedo_ptr = albedo != nullptr ? albedo : geomState.rgb;
+	const float* albedo_ptr = albedo != nullptr ? albedo : geomState.albedo;
 	const float* roughness_ptr = roughness != nullptr ? roughness : geomState.roughness;
 	const float* metallic_ptr = metallic != nullptr ? metallic : geomState.metallic;
 	const float* transMat_ptr = transMat_precomp != nullptr ? transMat_precomp : geomState.transMat;
@@ -377,7 +377,7 @@ void CudaRasterizer::Rasterizer::backward(
 	const dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Compute loss gradients w.r.t. 2D position, opacity and materials
-	const float* albedo_ptr = (albedo != nullptr) ? albedo : geomState.rgb;
+	const float* albedo_ptr = (albedo != nullptr) ? albedo : geomState.albedo;
 	const float* roughness_ptr = (roughness != nullptr) ? roughness : geomState.roughness;
 	const float* metallic_ptr = (metallic != nullptr) ? metallic : geomState.metallic;
 	const float* depth_ptr = geomState.depths;

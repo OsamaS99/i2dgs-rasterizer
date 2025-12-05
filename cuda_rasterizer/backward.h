@@ -28,7 +28,7 @@ namespace BACKWARD
 		float focal_x, float focal_y,
 		const float2* means2D,
 		const float4* normal_opacity,
-		const float* colors,
+		const float* albedo,
 		const float* roughness,
 		const float* metallic,
 		const float* transMats,
@@ -43,7 +43,7 @@ namespace BACKWARD
 		float4* dL_dmean2D,
 		float* dL_dnormal3D,
 		float* dL_dopacity,
-		float* dL_dcolors,
+		float* dL_dalbedo,
 		float* dL_droughness,
 		float* dL_dmetallic);
 
@@ -63,7 +63,7 @@ namespace BACKWARD
 		float4* dL_dmean2D,
 		const float* dL_dnormal3D,
 		float* dL_dtransMat,
-		float* dL_dcolor,
+		float* dL_dalbedo,
 		glm::vec3* dL_dmeans,
 		glm::vec2* dL_dscale,
 		glm::vec4* dL_drot);

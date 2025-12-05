@@ -49,7 +49,7 @@ RasterizeGaussiansBackwardCUDA(
 	const torch::Tensor& projmatrix,
 	const float tan_fovx, 
 	const float tan_fovy,
-	const torch::Tensor& dL_dout_color,
+	const torch::Tensor& dL_dout_albedo,
 	const torch::Tensor& dL_dout_roughness,
 	const torch::Tensor& dL_dout_metallic,
 	const torch::Tensor& dL_dout_auxiliary,
