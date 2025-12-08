@@ -387,7 +387,7 @@ renderCUDA(
 			// Obtain alpha by multiplying with Gaussian opacity
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
-			float alpha = min(0.99f, opa * exp(power));
+			float alpha = min(0.99f, opa * __expf(power));
 			if (record_transmittance){
 				atomicAdd(&transmittance[collected_id[j]], T * alpha); 
 				atomicAdd(&num_covered_pixels[collected_id[j]], 1);
