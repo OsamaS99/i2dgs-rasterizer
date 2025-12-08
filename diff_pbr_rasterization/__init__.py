@@ -249,7 +249,7 @@ class GaussianRasterizationSettings(NamedTuple):
     campos: torch.Tensor
     prefiltered: bool
     record_transmittance: bool = False
-    debug: bool
+    debug: bool = False
 
 class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):
