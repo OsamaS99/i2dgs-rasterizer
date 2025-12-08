@@ -202,6 +202,9 @@ int CudaRasterizer::Rasterizer::forward(
 	float* out_roughness,
 	float* out_metallic,
 	float* out_auxiliary,
+	float* transmittance,
+	int* num_covered_pixels,
+	bool record_transmittance,
 	int* radii,
 	bool debug)
 {
@@ -320,7 +323,10 @@ int CudaRasterizer::Rasterizer::forward(
 		out_color,
 		out_roughness,
 		out_metallic,
-		out_auxiliary), debug)
+		out_auxiliary,
+		transmittance,
+		num_covered_pixels,
+		record_transmittance), debug)
 
 	return num_rendered;
 }
@@ -403,7 +409,7 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dpix_metallic,
 		dL_daux,
 		dL_dtransMat,
-		(float3*)dL_dmean2D,
+		(float4*)dL_dmean2D,
 		dL_dnormal,
 		dL_dopacity,
 		dL_dalbedo,
@@ -424,7 +430,7 @@ void CudaRasterizer::Rasterizer::backward(
 		focal_x, focal_y,
 		tan_fovx, tan_fovy,
 		(glm::vec3*)campos,
-		(float3*)dL_dmean2D,
+		(float4*)dL_dmean2D,
 		dL_dnormal,
 		dL_dtransMat,
 		dL_dalbedo,

@@ -67,7 +67,10 @@ namespace FORWARD
 		float* out_albedo,
 		float* out_roughness,
 		float* out_metallic,
-		float* out_others);
+		float* out_others,
+		float* transmittance,
+		int* num_covered_pixels,
+		bool record_transmittance);
 }
 
 #endif

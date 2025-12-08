@@ -52,6 +52,9 @@ namespace CudaRasterizer
 			float* out_roughness,
 			float* out_metallic,
 			float* out_auxiliary,
+			float* transmittance,
+			int* num_covered_pixels,
+			bool record_transmittance,
 			int* radii = nullptr,
 			bool debug = false);
 

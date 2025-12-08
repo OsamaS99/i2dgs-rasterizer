@@ -37,7 +37,7 @@ renderCUDA(
 	const float* __restrict__ dL_dpix_metallic,
 	const float* __restrict__ dL_daux,
 	float* __restrict__ dL_dtransMat,
-	float3* __restrict__ dL_dmean2D,
+	float4* __restrict__ dL_dmean2D,
 	float* __restrict__ dL_dnormal3D,
 	float* __restrict__ dL_dopacity,
 	float* __restrict__ dL_dalbedo,
@@ -126,6 +126,11 @@ renderCUDA(
 	float last_color[C] = { 0 };
 	float last_roughness = 0;
 	float last_metallic = 0;
+
+	// Gradient of pixel coordinate w.r.t. normalized 
+	// screen-space viewport corrdinates (-1 to 1)
+	const float ddelx_dx = 0.5 * W;
+	const float ddely_dy = 0.5 * H;
 
 	// Traverse all Gaussians
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -293,8 +298,13 @@ renderCUDA(
 			} else {
 				const float dG_ddelx = -G * FilterInvSquare * d.x;
 				const float dG_ddely = -G * FilterInvSquare * d.y;
-				atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx);
-				atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely);
+				atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx); // not scaled
+				atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely); // not scaled
+
+				// Homodirectional Gradient 
+				atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dG * dG_ddelx));
+				atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dG * dG_ddely));
+
 				atomicAdd(&dL_dtransMat[global_id * 9 + 6],  s.x * dL_dz);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 7],  s.y * dL_dz);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 8],  dL_dz);
@@ -315,7 +325,7 @@ __device__ void compute_transmat_aabb(
 	const float* viewmatrix, 
 	const int W, const int H, 
 	const float3* dL_dnormals,
-	const float3* dL_dmean2Ds, 
+	const float4* dL_dmean2Ds, 
 	float* dL_dTs, 
 	glm::vec3* dL_dmeans, 
 	glm::vec2* dL_dscales,
@@ -374,7 +384,7 @@ __device__ void compute_transmat_aabb(
 		dL_dTs[idx*9+3], dL_dTs[idx*9+4], dL_dTs[idx*9+5],
 		dL_dTs[idx*9+6], dL_dTs[idx*9+7], dL_dTs[idx*9+8]
 	);
-	float3 dL_dmean2D = dL_dmean2Ds[idx];
+	float4 dL_dmean2D = dL_dmean2Ds[idx];
 	if(dL_dmean2D.x != 0 || dL_dmean2D.y != 0)
 	{
 		glm::vec3 t_vec = glm::vec3(9.0f, 9.0f, -1.0f);
@@ -453,7 +463,7 @@ __global__ void preprocessCUDA(
 	float* dL_dtransMats,
 	const float* dL_dnormal3Ds,
 	float* dL_dalbedo,
-	float3* dL_dmean2Ds,
+	float4* dL_dmean2Ds,
 	glm::vec3* dL_dmean3Ds,
 	glm::vec2* dL_dscales,
 	glm::vec4* dL_drots)
@@ -480,8 +490,8 @@ __global__ void preprocessCUDA(
 	
 	// Gradient hack for densification
 	float depth = transMats[idx * 9 + 8];
-	dL_dmean2Ds[idx].x = dL_dtransMats[idx * 9 + 2] * depth * 0.5 * float(W);
-	dL_dmean2Ds[idx].y = dL_dtransMats[idx * 9 + 5] * depth * 0.5 * float(H);
+	dL_dmean2Ds[idx].x = dL_dtransMats[idx * 9 + 2] * depth * float(W);
+	dL_dmean2Ds[idx].y = dL_dtransMats[idx * 9 + 5] * depth * float(H);
 }
 
 void BACKWARD::preprocess(
@@ -497,7 +507,7 @@ void BACKWARD::preprocess(
 	const float focal_x, const float focal_y,
 	const float tan_fovx, const float tan_fovy,
 	const glm::vec3* campos, 
-	float3* dL_dmean2Ds,
+	float4* dL_dmean2Ds,
 	const float* dL_dnormal3Ds,
 	float* dL_dtransMats,
 	float* dL_dalbedo,
@@ -550,7 +560,7 @@ void BACKWARD::render(
 	const float* dL_dpix_metallic,
 	const float* dL_daux,
 	float* dL_dtransMat,
-	float3* dL_dmean2D,
+	float4* dL_dmean2D,
 	float* dL_dnormal3D,
 	float* dL_dopacity,
 	float* dL_dalbedo,

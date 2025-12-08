@@ -27,7 +27,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
 	return lambda;
 }
 
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const torch::Tensor& means3D,
 	const torch::Tensor& albedo,
@@ -46,6 +46,7 @@ RasterizeGaussiansCUDA(
 	const int image_width,
 	const torch::Tensor& campos,
 	const bool prefiltered,
+	const bool record_transmittance,
 	const bool debug)
 {
 	if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
@@ -76,8 +77,11 @@ RasterizeGaussiansCUDA(
 	torch::Tensor out_roughness = torch::zeros({H, W}, float_opts);
 	torch::Tensor out_metallic = torch::zeros({H, W}, float_opts);
 	// Auxiliary outputs (depth, alpha, normal, middepth, distortion)
-	torch::Tensor out_auxiliary = torch::zeros({7, H, W}, float_opts);
+	torch::Tensor out_auxiliary = torch::zeros({7+2, H, W}, float_opts);
 	torch::Tensor radii = torch::zeros({P}, int_opts);
+	
+	torch::Tensor transmittance = torch::full({P}, 0.0, float_opts);
+	torch::Tensor num_covered_pixels = torch::full({P}, 0, int_opts);
 
 	torch::Device device(torch::kCUDA);
 	torch::TensorOptions options(torch::kByte);
@@ -116,10 +120,13 @@ RasterizeGaussiansCUDA(
 			out_roughness.contiguous().data<float>(),
 			out_metallic.contiguous().data<float>(),
 			out_auxiliary.contiguous().data<float>(),
+			transmittance.contiguous().data<float>(),
+			num_covered_pixels.contiguous().data<int>(),
+			record_transmittance,
 			radii.contiguous().data<int>(),
 			debug);
 	}
-	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer);
+	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
@@ -168,7 +175,7 @@ RasterizeGaussiansBackwardCUDA(
 	const int W = dL_dout_albedo.size(2);
 
 	torch::Tensor dL_dmeans3D = torch::zeros({P, 3}, means3D.options());
-	torch::Tensor dL_dmeans2D = torch::zeros({P, 3}, means3D.options());
+	torch::Tensor dL_dmeans2D = torch::zeros({P, 4}, means3D.options());
 	torch::Tensor dL_dalbedo = torch::zeros({P, NUM_CHANNELS}, means3D.options());
 	torch::Tensor dL_droughness = torch::zeros({P, 1}, means3D.options());
 	torch::Tensor dL_dmetallic = torch::zeros({P, 1}, means3D.options());
