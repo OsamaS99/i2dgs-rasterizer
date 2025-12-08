@@ -269,7 +269,10 @@ renderCUDA(
 	uint32_t* __restrict__ n_contrib,
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
-	float* __restrict__ out_others)
+	float* __restrict__ out_others,
+	float* __restrict__ transmittance,
+	int* __restrict__ num_covered_pixels,
+	bool record_transmittance)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -313,8 +316,9 @@ renderCUDA(
 	float M2 = {0};
 	float distortion = {0};
 	float median_depth = {0};
-	// float median_weight = {0};
+	float median_weight = {0};
 	float median_contributor = {-1};
+	float median_id = {-1};
 
 #endif
 
@@ -384,6 +388,10 @@ renderCUDA(
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
 			float alpha = min(0.99f, opa * exp(power));
+			if (record_transmittance){
+				atomicAdd(&transmittance[collected_id[j]], T * alpha); 
+				atomicAdd(&num_covered_pixels[collected_id[j]], 1);
+			}
 			if (alpha < 1.0f / 255.0f)
 				continue;
 			float test_T = T * (1 - alpha);
@@ -406,7 +414,8 @@ renderCUDA(
 
 			if (T > 0.5) {
 				median_depth = depth;
-				// median_weight = w;
+				median_weight = w;
+				median_id = collected_id[j];
 				median_contributor = contributor;
 			}
 			// Render normal map
@@ -442,7 +451,8 @@ renderCUDA(
 		for (int ch=0; ch<3; ch++) out_others[pix_id + (NORMAL_OFFSET+ch) * H * W] = N[ch];
 		out_others[pix_id + MIDDEPTH_OFFSET * H * W] = median_depth;
 		out_others[pix_id + DISTORTION_OFFSET * H * W] = distortion;
-		// out_others[pix_id + MEDIAN_WEIGHT_OFFSET * H * W] = median_weight;
+		out_others[pix_id + MEDIAN_WEIGHT_OFFSET * H * W] = median_weight;
+		out_others[pix_id + MEDIAN_ID_OFFSET * H * W] = median_id;
 #endif
 	}
 }
@@ -462,7 +472,10 @@ void FORWARD::render(
 	uint32_t* n_contrib,
 	const float* bg_color,
 	float* out_color,
-	float* out_others)
+	float* out_others,
+	float* transmittance,
+	int* num_covered_pixels,
+	bool record_transmittance)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
 		ranges,
@@ -478,7 +491,10 @@ void FORWARD::render(
 		n_contrib,
 		bg_color,
 		out_color,
-		out_others);
+		out_others,
+		transmittance,
+		num_covered_pixels,
+		record_transmittance);
 }
 
 void FORWARD::preprocess(int P, int D, int M,

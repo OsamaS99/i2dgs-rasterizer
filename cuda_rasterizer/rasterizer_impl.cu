@@ -217,6 +217,9 @@ int CudaRasterizer::Rasterizer::forward(
 	const bool prefiltered,
 	float* out_color,
 	float* out_others,
+	float* transmittance,
+	int* num_covered_pixels,
+	bool record_transmittance,
 	int* radii,
 	bool debug)
 {
@@ -336,7 +339,10 @@ int CudaRasterizer::Rasterizer::forward(
 		imgState.n_contrib,
 		background,
 		out_color,
-		out_others), debug)
+		out_others,
+		transmittance,
+		num_covered_pixels,
+		record_transmittance), debug)
 
 	return num_rendered;
 }
@@ -414,7 +420,7 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dpix,
 		dL_depths,
 		dL_dtransMat,
-		(float3*)dL_dmean2D,
+		(float4*)dL_dmean2D,
 		dL_dnormal,
 		dL_dopacity,
 		dL_dcolor), debug)
@@ -437,7 +443,7 @@ void CudaRasterizer::Rasterizer::backward(
 		focal_x, focal_y,
 		tan_fovx, tan_fovy,
 		(glm::vec3*)campos,
-		(float3*)dL_dmean2D, // gradient inputs
+		(float4*)dL_dmean2D, // gradient inputs
 		dL_dnormal,		     // gradient inputs
 		dL_dtransMat,
 		dL_dcolor,
