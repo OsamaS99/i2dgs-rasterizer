@@ -295,15 +295,19 @@ renderCUDA(
 				atomicAdd(&dL_dtransMat[global_id * 9 + 6],  dL_dTw.x);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 7],  dL_dTw.y);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 8],  dL_dTw.z);
+				
+				//AbsGS
+                atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dTu.z));
+                atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dTv.z));
 			} else {
 				const float dG_ddelx = -G * FilterInvSquare * d.x;
 				const float dG_ddely = -G * FilterInvSquare * d.y;
 				atomicAdd(&dL_dmean2D[global_id].x, dL_dG * dG_ddelx); // not scaled
 				atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely); // not scaled
 
-				// Homodirectional Gradient 
-				atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dG * dG_ddelx));
-				atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dG * dG_ddely));
+                //AbsGS
+                atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dG * dG_ddelx)); // not scaled
+                atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dG * dG_ddely)); // not scaled
 
 				atomicAdd(&dL_dtransMat[global_id * 9 + 6],  s.x * dL_dz);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 7],  s.y * dL_dz);
@@ -492,6 +496,13 @@ __global__ void preprocessCUDA(
 	float depth = transMats[idx * 9 + 8];
 	dL_dmean2Ds[idx].x = dL_dtransMats[idx * 9 + 2] * depth * float(W);
 	dL_dmean2Ds[idx].y = dL_dtransMats[idx * 9 + 5] * depth * float(H);
+
+    //AbsGS
+    dL_dmean2Ds[idx].z += dL_dtransMats[idx * 9 + 2]; // to ndc
+    dL_dmean2Ds[idx].z *= depth * W;
+
+    dL_dmean2Ds[idx].w += dL_dtransMats[idx * 9 + 5]; // to ndc
+    dL_dmean2Ds[idx].w *= depth * H;
 }
 
 void BACKWARD::preprocess(
