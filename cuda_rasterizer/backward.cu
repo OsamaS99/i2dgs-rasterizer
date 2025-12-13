@@ -427,6 +427,10 @@ renderCUDA(
 				atomicAdd(&dL_dtransMat[global_id * 9 + 6],  dL_dTw.x);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 7],  dL_dTw.y);
 				atomicAdd(&dL_dtransMat[global_id * 9 + 8],  dL_dTw.z);
+
+                //AbsGS
+                atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dTu.z));
+                atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dTv.z));
 			} else {
 				// // Update gradients w.r.t. center of Gaussian 2D mean position
 				const float dG_ddelx = -G * FilterInvSquare * d.x;
@@ -435,8 +439,8 @@ renderCUDA(
 				atomicAdd(&dL_dmean2D[global_id].y, dL_dG * dG_ddely); // not scaled
 
 				// Homodirectional Gradient 
-				atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dG * dG_ddelx * ddelx_dx));
-				atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dG * dG_ddely * ddely_dy));
+                atomicAdd(&dL_dmean2D[global_id].z, fabs(dL_dG * dG_ddelx)); // not scaled
+                atomicAdd(&dL_dmean2D[global_id].w, fabs(dL_dG * dG_ddely)); // not scaled
 
 				// // Propagate the gradients of depth
 				atomicAdd(&dL_dtransMat[global_id * 9 + 6],  s.x * dL_dz);
@@ -633,11 +637,18 @@ __global__ void preprocessCUDA(
 
 	if (shs)
 		computeColorFromSH(idx, D, M, (glm::vec3*)means3D, *campos, shs, clamped, (glm::vec3*)dL_dcolors, (glm::vec3*)dL_dmean3Ds, (glm::vec3*)dL_dshs);
-	
+
 	// hack the gradient here for densitification
 	float depth = transMats[idx * 9 + 8];
 	dL_dmean2Ds[idx].x = dL_dtransMats[idx * 9 + 2] * depth * float(W); // to ndc 
 	dL_dmean2Ds[idx].y = dL_dtransMats[idx * 9 + 5] * depth * float(H); // to ndc
+
+    //AbsGS
+    dL_dmean2Ds[idx].z += dL_dtransMats[idx * 9 + 2]; // to ndc
+    dL_dmean2Ds[idx].z *= depth * W;
+
+    dL_dmean2Ds[idx].w += dL_dtransMats[idx * 9 + 5]; // to ndc
+    dL_dmean2Ds[idx].w *= depth * H;
 	}
 
 
