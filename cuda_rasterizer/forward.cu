@@ -214,7 +214,12 @@ renderCUDA(
 	float* __restrict__ out_others,
 	float* __restrict__ transmittance,
 	int* __restrict__ num_covered_pixels,
-	bool record_transmittance)
+	bool record_transmittance,
+	int max_intersections,
+	float* __restrict__ out_intersection_points,
+	float* __restrict__ out_intersection_weights,
+	int* __restrict__ out_intersection_gaussian_ids,
+	int* __restrict__ out_num_intersections)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -225,8 +230,16 @@ renderCUDA(
 	uint32_t pix_id = W * pix.y + pix.x;
 	float2 pixf = { (float)pix.x, (float)pix.y};
 
+	// Compute ray direction for this pixel (camera space)
+	// Used for computing 3D intersection points
+	float cx = (float)(W - 1) / 2.0f;
+	float cy = (float)(H - 1) / 2.0f;
+
 	bool inside = pix.x < W && pix.y < H;
 	bool done = !inside;
+
+	// Counter for intersections recorded per pixel
+	int intersection_count = 0;
 
 	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
 	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
@@ -335,6 +348,32 @@ renderCUDA(
 			}
 
 			float w = alpha * T;
+
+			// Record intersection point and weight if we have capacity
+			if (max_intersections > 0 && intersection_count < max_intersections)
+			{
+				int gaussian_id = collected_id[j];
+				
+				// Compute 3D intersection point in camera space
+				// depth is along z-axis, so intersection = depth * ray_direction (unnormalized)
+				float3 pos_cam = {
+					(pixf.x - cx) / focal_x * depth,
+					(pixf.y - cy) / focal_y * depth,
+					depth
+				};
+				// Store intersection data
+				int out_idx = intersection_count * H * W + pix_id;  // [n, H, W] index
+				int out_idx_3d = out_idx * 3;  // [n, H, W, 3] base index
+				
+				out_intersection_points[out_idx_3d + 0] = pos_cam.x;
+				out_intersection_points[out_idx_3d + 1] = pos_cam.y;
+				out_intersection_points[out_idx_3d + 2] = pos_cam.z;
+				out_intersection_weights[out_idx] = w;
+				out_intersection_gaussian_ids[out_idx] = gaussian_id;
+				
+				intersection_count++;
+			}
+
 #if RENDER_AXUTILITY
 			float A = 1-T;
 			float m = far_n / (far_n - near_n) * (1 - near_n / depth);
@@ -389,6 +428,11 @@ renderCUDA(
 		out_others[pix_id + MEDIAN_WEIGHT_OFFSET * H * W] = median_weight;
 		out_others[pix_id + MEDIAN_ID_OFFSET * H * W] = median_id;
 #endif
+		// Output number of intersections recorded for this pixel
+		if (max_intersections > 0)
+		{
+			out_num_intersections[pix_id] = intersection_count;
+		}
 	}
 }
 
@@ -414,7 +458,12 @@ void FORWARD::render(
 	float* out_others,
 	float* transmittance,
 	int* num_covered_pixels,
-	bool record_transmittance)
+	bool record_transmittance,
+	int max_intersections,
+	float* out_intersection_points,
+	float* out_intersection_weights,
+	int* out_intersection_gaussian_ids,
+	int* out_num_intersections)
 {
 	renderCUDA<NUM_CHANNELS><<<grid, block>>>(
 		ranges,
@@ -437,7 +486,12 @@ void FORWARD::render(
 		out_others,
 		transmittance,
 		num_covered_pixels,
-		record_transmittance);
+		record_transmittance,
+		max_intersections,
+		out_intersection_points,
+		out_intersection_weights,
+		out_intersection_gaussian_ids,
+		out_num_intersections);
 }
 
 void FORWARD::preprocess(int P,

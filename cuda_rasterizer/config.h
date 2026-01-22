@@ -16,4 +16,7 @@
 #define BLOCK_X 16
 #define BLOCK_Y 16
 
+// Maximum number of ray-splat intersections to record per pixel
+#define MAX_INTERSECTIONS_PER_PIXEL 16
+
 #endif

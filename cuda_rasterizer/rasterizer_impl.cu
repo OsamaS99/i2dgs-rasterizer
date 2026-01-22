@@ -206,6 +206,11 @@ int CudaRasterizer::Rasterizer::forward(
 	float* transmittance,
 	int* num_covered_pixels,
 	bool record_transmittance,
+	int max_intersections,
+	float* out_intersection_points,
+	float* out_intersection_weights,
+	int* out_intersection_gaussian_ids,
+	int* out_num_intersections,
 	int* radii,
 	bool debug)
 {
@@ -328,7 +333,12 @@ int CudaRasterizer::Rasterizer::forward(
 		out_auxiliary,
 		transmittance,
 		num_covered_pixels,
-		record_transmittance), debug)
+		record_transmittance,
+		max_intersections,
+		out_intersection_points,
+		out_intersection_weights,
+		out_intersection_gaussian_ids,
+		out_num_intersections), debug)
 
 	return num_rendered;
 }

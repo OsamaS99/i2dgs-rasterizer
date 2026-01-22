@@ -30,6 +30,12 @@ class RasterizationOutputs(NamedTuple):
         middepth: [1, H, W] - Median depth
         distortion: [1, H, W] - Distortion loss auxiliary
         
+    Intersection outputs (for shadow rays):
+        intersection_points: [max_n, H, W, 3] - 3D intersection points in camera space
+        intersection_weights: [max_n, H, W] - Alpha-blending weights (alpha * T)
+        intersection_gaussian_ids: [max_n, H, W] - Gaussian index for each intersection
+        num_intersections: [H, W] - Number of valid intersections per pixel
+        
     Other:
         radii: [N] - Screen-space radii of Gaussians
     """
@@ -42,6 +48,10 @@ class RasterizationOutputs(NamedTuple):
     middepth: torch.Tensor     # [1, H, W] - Median depth
     distortion: torch.Tensor   # [1, H, W] - Distortion loss auxiliary
     radii: torch.Tensor        # [N] - Screen-space radii of Gaussians
+    intersection_points: torch.Tensor       # [max_n, H, W, 3] - 3D intersection points (camera space)
+    intersection_weights: torch.Tensor      # [max_n, H, W] - Blending weights
+    intersection_gaussian_ids: torch.Tensor # [max_n, H, W] - Gaussian indices
+    num_intersections: torch.Tensor         # [H, W] - Count of intersections per pixel
 
 
 def cpu_deep_copy_tuple(input_tuple):
@@ -74,7 +84,9 @@ def rasterize_gaussians(
     )
     
     if raster_settings.record_transmittance:
-        out_albedo, out_roughness, out_metallic, depth, alpha, normal, middepth, distortion, radii, transmittance_avg, num_covered_pixels = ret
+        (out_albedo, out_roughness, out_metallic, depth, alpha, normal, middepth, distortion, radii,
+         intersection_points, intersection_weights, intersection_gaussian_ids, num_intersections,
+         transmittance_avg, num_covered_pixels) = ret
         return RasterizationOutputs(
             albedo=out_albedo,
             roughness=out_roughness,
@@ -85,9 +97,14 @@ def rasterize_gaussians(
             middepth=middepth,
             distortion=distortion,
             radii=radii,
+            intersection_points=intersection_points,
+            intersection_weights=intersection_weights,
+            intersection_gaussian_ids=intersection_gaussian_ids,
+            num_intersections=num_intersections,
         ), transmittance_avg, num_covered_pixels
 
-    out_albedo, out_roughness, out_metallic, depth, alpha, normal, middepth, distortion, radii = ret
+    (out_albedo, out_roughness, out_metallic, depth, alpha, normal, middepth, distortion, radii,
+     intersection_points, intersection_weights, intersection_gaussian_ids, num_intersections) = ret
     return RasterizationOutputs(
         albedo=out_albedo,
         roughness=out_roughness,
@@ -98,6 +115,10 @@ def rasterize_gaussians(
         middepth=middepth,
         distortion=distortion,
         radii=radii,
+        intersection_points=intersection_points,
+        intersection_weights=intersection_weights,
+        intersection_gaussian_ids=intersection_gaussian_ids,
+        num_intersections=num_intersections,
     )
 
 class _RasterizeGaussians(torch.autograd.Function):
@@ -136,6 +157,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.campos,
             raster_settings.prefiltered,
             raster_settings.record_transmittance,
+            raster_settings.max_intersections,
             raster_settings.debug
         )
 
@@ -143,13 +165,17 @@ class _RasterizeGaussians(torch.autograd.Function):
         if raster_settings.debug:
             cpu_args = cpu_deep_copy_tuple(args)
             try:
-                num_rendered, out_albedo, out_roughness, out_metallic, auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels = _C.rasterize_gaussians(*args)
+                (num_rendered, out_albedo, out_roughness, out_metallic, auxiliary, radii, 
+                 geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels,
+                 intersection_points, intersection_weights, intersection_gaussian_ids, num_intersections) = _C.rasterize_gaussians(*args)
             except Exception as ex:
                 torch.save(cpu_args, "snapshot_fw.dump")
                 print("\nAn error occured in forward. Please forward snapshot_fw.dump for debugging.")
                 raise ex
         else:
-            num_rendered, out_albedo, out_roughness, out_metallic, auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels = _C.rasterize_gaussians(*args)
+            (num_rendered, out_albedo, out_roughness, out_metallic, auxiliary, radii, 
+             geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels,
+             intersection_points, intersection_weights, intersection_gaussian_ids, num_intersections) = _C.rasterize_gaussians(*args)
 
         # Keep relevant tensors for backward
         ctx.raster_settings = raster_settings
@@ -165,12 +191,17 @@ class _RasterizeGaussians(torch.autograd.Function):
         
         if raster_settings.record_transmittance:
             transmittance_avg = transmittance / (num_covered_pixels + 1e-6)
-            return out_albedo, out_roughness, out_metallic, out_depth, out_alpha, out_normal, out_middepth, out_distortion, radii, transmittance_avg, num_covered_pixels
+            return (out_albedo, out_roughness, out_metallic, out_depth, out_alpha, out_normal, out_middepth, out_distortion, radii,
+                    intersection_points, intersection_weights, intersection_gaussian_ids, num_intersections,
+                    transmittance_avg, num_covered_pixels)
         
-        return out_albedo, out_roughness, out_metallic, out_depth, out_alpha, out_normal, out_middepth, out_distortion, radii
+        return (out_albedo, out_roughness, out_metallic, out_depth, out_alpha, out_normal, out_middepth, out_distortion, radii,
+                intersection_points, intersection_weights, intersection_gaussian_ids, num_intersections)
 
     @staticmethod
-    def backward(ctx, grad_out_albedo, grad_roughness, grad_metallic, grad_depth, grad_alpha, grad_normal, grad_middepth, grad_distortion, grad_radii, grad_transmittance=None, grad_num_covered_pixels=None):
+    def backward(ctx, grad_out_albedo, grad_roughness, grad_metallic, grad_depth, grad_alpha, grad_normal, grad_middepth, grad_distortion, grad_radii,
+                 grad_intersection_points=None, grad_intersection_weights=None, grad_intersection_gaussian_ids=None, grad_num_intersections=None,
+                 grad_transmittance=None, grad_num_covered_pixels=None):
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
         raster_settings = ctx.raster_settings
@@ -252,6 +283,7 @@ class GaussianRasterizationSettings(NamedTuple):
     campos: torch.Tensor
     prefiltered: bool
     record_transmittance: bool = False
+    max_intersections: int = 0  # Maximum ray-splat intersections to record per pixel (0 = disabled)
     debug: bool = False
 
 class GaussianRasterizer(nn.Module):

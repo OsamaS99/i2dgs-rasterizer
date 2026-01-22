@@ -27,7 +27,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
 	return lambda;
 }
 
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const float background,
 	const torch::Tensor& means3D,
@@ -48,6 +48,7 @@ RasterizeGaussiansCUDA(
 	const torch::Tensor& campos,
 	const bool prefiltered,
 	const bool record_transmittance,
+	const int max_intersections,
 	const bool debug)
 {
 	if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
@@ -83,6 +84,12 @@ RasterizeGaussiansCUDA(
 	
 	torch::Tensor transmittance = torch::full({P}, 0.0, float_opts);
 	torch::Tensor num_covered_pixels = torch::full({P}, 0, int_opts);
+
+	// Intersection outputs: [max_n, H, W, 3] for points, [max_n, H, W] for weights, [max_n, H, W] for ids
+	torch::Tensor out_intersection_points = torch::zeros({max_intersections, H, W, 3}, float_opts);
+	torch::Tensor out_intersection_weights = torch::zeros({max_intersections, H, W}, float_opts);
+	torch::Tensor out_intersection_gaussian_ids = torch::full({max_intersections, H, W}, -1, int_opts);
+	torch::Tensor out_num_intersections = torch::zeros({H, W}, int_opts);
 
 	torch::Device device(torch::kCUDA);
 	torch::TensorOptions options(torch::kByte);
@@ -125,10 +132,15 @@ RasterizeGaussiansCUDA(
 			transmittance.contiguous().data<float>(),
 			num_covered_pixels.contiguous().data<int>(),
 			record_transmittance,
+			max_intersections,
+			out_intersection_points.contiguous().data<float>(),
+			out_intersection_weights.contiguous().data<float>(),
+			out_intersection_gaussian_ids.contiguous().data<int>(),
+			out_num_intersections.contiguous().data<int>(),
 			radii.contiguous().data<int>(),
 			debug);
 	}
-	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels);
+	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels, out_intersection_points, out_intersection_weights, out_intersection_gaussian_ids, out_num_intersections);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
