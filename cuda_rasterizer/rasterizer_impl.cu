@@ -183,6 +183,7 @@ int CudaRasterizer::Rasterizer::forward(
 	std::function<char* (size_t)> binningBuffer,
 	std::function<char* (size_t)> imageBuffer,
 	const int P,
+	const float background,
 	const int width, int height,
 	const float* means3D,
 	const float* albedo,
@@ -320,6 +321,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.normal_opacity,
 		imgState.accum_alpha,
 		imgState.n_contrib,
+		background,
 		out_color,
 		out_roughness,
 		out_metallic,
@@ -334,6 +336,7 @@ int CudaRasterizer::Rasterizer::forward(
 // Produce necessary gradients for optimization
 void CudaRasterizer::Rasterizer::backward(
 	const int P, int R,
+	const float background,
 	const int width, int height,
 	const float* means3D,
 	const float* albedo,
@@ -395,6 +398,7 @@ void CudaRasterizer::Rasterizer::backward(
 		binningState.point_list,
 		width, height,
 		focal_x, focal_y,
+		background,
 		geomState.means2D,
 		geomState.normal_opacity,
 		albedo_ptr,

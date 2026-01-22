@@ -207,6 +207,7 @@ renderCUDA(
 	const float4* __restrict__ normal_opacity,
 	float* __restrict__ final_T,
 	uint32_t* __restrict__ n_contrib,
+	const float background,
 	float* __restrict__ out_albedo,
 	float* __restrict__ out_roughness,
 	float* __restrict__ out_metallic,
@@ -370,11 +371,11 @@ renderCUDA(
 		final_T[pix_id] = T;
 		n_contrib[pix_id] = last_contributor;
 		
-		// Core material outputs
+		// Core material outputs with background blending
 		for (int ch = 0; ch < CHANNELS; ch++)
-			out_albedo[ch * H * W + pix_id] = C[ch];
-		out_roughness[pix_id] = R_acc;
-		out_metallic[pix_id] = M_acc;
+			out_albedo[ch * H * W + pix_id] = C[ch] + T * background;
+		out_roughness[pix_id] = R_acc + T * background;
+		out_metallic[pix_id] = M_acc + T * background;
 
 #if RENDER_AXUTILITY
 		n_contrib[pix_id + H * W] = median_contributor;
@@ -406,6 +407,7 @@ void FORWARD::render(
 	const float4* normal_opacity,
 	float* final_T,
 	uint32_t* n_contrib,
+	const float background,
 	float* out_albedo,
 	float* out_roughness,
 	float* out_metallic,
@@ -428,6 +430,7 @@ void FORWARD::render(
 		normal_opacity,
 		final_T,
 		n_contrib,
+		background,
 		out_albedo,
 		out_roughness,
 		out_metallic,

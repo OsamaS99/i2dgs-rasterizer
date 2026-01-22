@@ -117,6 +117,7 @@ class _RasterizeGaussians(torch.autograd.Function):
     ):
         # Restructure arguments the way that the C++ lib expects them
         args = (
+            raster_settings.bg,
             means3D,
             albedo,
             roughness,
@@ -186,6 +187,7 @@ class _RasterizeGaussians(torch.autograd.Function):
 
         # Restructure args as C++ method expects them
         args = (
+            raster_settings.bg,
             means3D, 
             radii, 
             albedo,
@@ -243,6 +245,7 @@ class GaussianRasterizationSettings(NamedTuple):
     image_width: int 
     tanfovx: float
     tanfovy: float
+    bg: float
     scale_modifier: float
     viewmatrix: torch.Tensor
     projmatrix: torch.Tensor

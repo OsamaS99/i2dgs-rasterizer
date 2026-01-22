@@ -15,7 +15,6 @@
 #include <cooperative_groups/reduce.h>
 namespace cg = cooperative_groups;
 
-// Backward version of the rendering procedure.
 template <uint32_t C>
 __global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
@@ -23,6 +22,7 @@ renderCUDA(
 	const uint32_t* __restrict__ point_list,
 	int W, int H,
 	float focal_x, float focal_y,
+	const float background,
 	const float2* __restrict__ points_xy_image,
 	const float4* __restrict__ normal_opacity,
 	const float* __restrict__ albedo,
@@ -261,6 +261,15 @@ renderCUDA(
 
 			dL_dalpha *= T;
 			last_alpha = alpha;
+
+			// Account for fact that alpha also influences how much of
+			// the background is added if nothing left to blend
+			float bg_dot_dpixel = 0;
+			for (int i = 0; i < C; i++)
+				bg_dot_dpixel += background * dL_dpixel[i];
+			bg_dot_dpixel += background * dL_droughness_pix;
+			bg_dot_dpixel += background * dL_dmetallic_pix;
+			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
 
 			const float dL_dG = nor_o.w * dL_dalpha;
 #if RENDER_AXUTILITY
@@ -557,6 +566,7 @@ void BACKWARD::render(
 	const uint32_t* point_list,
 	int W, int H,
 	float focal_x, float focal_y,
+	const float background,
 	const float2* means2D,
 	const float4* normal_opacity,
 	const float* albedo,
@@ -583,6 +593,7 @@ void BACKWARD::render(
 		point_list,
 		W, H,
 		focal_x, focal_y,
+		background,
 		means2D,
 		normal_opacity,
 		albedo,

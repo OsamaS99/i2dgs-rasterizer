@@ -26,6 +26,7 @@ namespace BACKWARD
 		const uint32_t* point_list,
 		int W, int H,
 		float focal_x, float focal_y,
+		const float background,
 		const float2* means2D,
 		const float4* normal_opacity,
 		const float* albedo,
