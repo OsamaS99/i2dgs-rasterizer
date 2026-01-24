@@ -27,7 +27,7 @@ std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
 	return lambda;
 }
 
-std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
+std::tuple<int, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 RasterizeGaussiansCUDA(
 	const float background,
 	const torch::Tensor& means3D,
@@ -85,10 +85,11 @@ RasterizeGaussiansCUDA(
 	torch::Tensor transmittance = torch::full({P}, 0.0, float_opts);
 	torch::Tensor num_covered_pixels = torch::full({P}, 0, int_opts);
 
-	// Intersection outputs: [max_n, H, W, 3] for points, [max_n, H, W] for weights, [max_n, H, W] for ids
-	torch::Tensor out_intersection_points = torch::zeros({max_intersections, H, W, 3}, float_opts);
+	// Intersection outputs: [max_n, H, W] for depths/weights/ids
+	// Layout optimized for GPU coalescing - consecutive pixels access contiguous memory
+	// Only store depth - 3D position reconstructed in PyTorch via: (px-cx)/fx*d, (py-cy)/fy*d, d
+	torch::Tensor out_intersection_depths = torch::zeros({max_intersections, H, W}, float_opts);
 	torch::Tensor out_intersection_weights = torch::zeros({max_intersections, H, W}, float_opts);
-	torch::Tensor out_intersection_gaussian_ids = torch::full({max_intersections, H, W}, -1, int_opts);
 	torch::Tensor out_num_intersections = torch::zeros({H, W}, int_opts);
 
 	torch::Device device(torch::kCUDA);
@@ -133,14 +134,13 @@ RasterizeGaussiansCUDA(
 			num_covered_pixels.contiguous().data<int>(),
 			record_transmittance,
 			max_intersections,
-			out_intersection_points.contiguous().data<float>(),
+			out_intersection_depths.contiguous().data<float>(),
 			out_intersection_weights.contiguous().data<float>(),
-			out_intersection_gaussian_ids.contiguous().data<int>(),
 			out_num_intersections.contiguous().data<int>(),
 			radii.contiguous().data<int>(),
 			debug);
 	}
-	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels, out_intersection_points, out_intersection_weights, out_intersection_gaussian_ids, out_num_intersections);
+	return std::make_tuple(rendered, out_albedo, out_roughness, out_metallic, out_auxiliary, radii, geomBuffer, binningBuffer, imgBuffer, transmittance, num_covered_pixels, out_intersection_depths, out_intersection_weights, out_num_intersections);
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
@@ -163,6 +163,11 @@ RasterizeGaussiansBackwardCUDA(
 	const torch::Tensor& dL_dout_roughness,
 	const torch::Tensor& dL_dout_metallic,
 	const torch::Tensor& dL_dout_auxiliary,
+	// Intersection gradients
+	const int max_intersections,
+	const torch::Tensor& dL_dintersection_depths,
+	const torch::Tensor& dL_dintersection_weights,
+	const torch::Tensor& num_intersections,
 	const torch::Tensor& campos,
 	const torch::Tensor& geomBuffer,
 	const int R,
@@ -227,6 +232,10 @@ RasterizeGaussiansBackwardCUDA(
 			dL_dout_roughness.contiguous().data<float>(),
 			dL_dout_metallic.contiguous().data<float>(),
 			dL_dout_auxiliary.contiguous().data<float>(),
+			max_intersections,
+			max_intersections > 0 ? dL_dintersection_depths.contiguous().data<float>() : nullptr,
+			max_intersections > 0 ? dL_dintersection_weights.contiguous().data<float>() : nullptr,
+			max_intersections > 0 ? num_intersections.contiguous().data<int>() : nullptr,
 			dL_dmeans2D.contiguous().data<float>(),
 			dL_dnormal.contiguous().data<float>(),  
 			dL_dopacity.contiguous().data<float>(),

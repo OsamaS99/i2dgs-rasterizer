@@ -58,9 +58,8 @@ namespace CudaRasterizer
 			bool record_transmittance,
 			// Intersection outputs
 			int max_intersections,
-			float* out_intersection_points,
+			float* out_intersection_depths,
 			float* out_intersection_weights,
-			int* out_intersection_gaussian_ids,
 			int* out_num_intersections,
 			int* radii = nullptr,
 			bool debug = false);
@@ -89,6 +88,11 @@ namespace CudaRasterizer
 			const float* dL_dpix_roughness,
 			const float* dL_dpix_metallic,
 			const float* dL_daux,
+			// Intersection gradients
+			int max_intersections,
+			const float* dL_dintersection_depths,
+			const float* dL_dintersection_weights,
+			const int* num_intersections,
 			float* dL_dmean2D,
 			float* dL_dnormal,
 			float* dL_dopacity,

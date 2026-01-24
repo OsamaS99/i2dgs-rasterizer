@@ -216,9 +216,8 @@ renderCUDA(
 	int* __restrict__ num_covered_pixels,
 	bool record_transmittance,
 	int max_intersections,
-	float* __restrict__ out_intersection_points,
+	float* __restrict__ out_intersection_depths,
 	float* __restrict__ out_intersection_weights,
-	int* __restrict__ out_intersection_gaussian_ids,
 	int* __restrict__ out_num_intersections)
 {
 	// Identify current tile and associated min/max pixel range.
@@ -349,30 +348,18 @@ renderCUDA(
 
 			float w = alpha * T;
 
-			// Record intersection point and weight if we have capacity
+			// Record intersection depth and weight if we have capacity
 			if (max_intersections > 0 && intersection_count < max_intersections)
 			{
-				int gaussian_id = collected_id[j];
+				// Store intersection data using coalesced layout [max_n, H, W]
+				// Only store depth - 3D position can be reconstructed in PyTorch:
+				// x = (px - cx) / fx * depth, y = (py - cy) / fy * depth, z = depth
+				int out_idx = intersection_count * H * W + pix_id;
 				
-				// Compute 3D intersection point in camera space
-				// depth is along z-axis, so intersection = depth * ray_direction (unnormalized)
-				float3 pos_cam = {
-					(pixf.x - cx) / focal_x * depth,
-					(pixf.y - cy) / focal_y * depth,
-					depth
-				};
-				// Store intersection data
-				int out_idx = intersection_count * H * W + pix_id;  // [n, H, W] index
-				int out_idx_3d = out_idx * 3;  // [n, H, W, 3] base index
-				
-				out_intersection_points[out_idx_3d + 0] = pos_cam.x;
-				out_intersection_points[out_idx_3d + 1] = pos_cam.y;
-				out_intersection_points[out_idx_3d + 2] = pos_cam.z;
+				out_intersection_depths[out_idx] = depth;
 				out_intersection_weights[out_idx] = w;
-				out_intersection_gaussian_ids[out_idx] = gaussian_id;
-				
-				intersection_count++;
 			}
+			intersection_count++;
 
 #if RENDER_AXUTILITY
 			float A = 1-T;
@@ -460,9 +447,8 @@ void FORWARD::render(
 	int* num_covered_pixels,
 	bool record_transmittance,
 	int max_intersections,
-	float* out_intersection_points,
+	float* out_intersection_depths,
 	float* out_intersection_weights,
-	int* out_intersection_gaussian_ids,
 	int* out_num_intersections)
 {
 	renderCUDA<NUM_CHANNELS><<<grid, block>>>(
@@ -488,9 +474,8 @@ void FORWARD::render(
 		num_covered_pixels,
 		record_transmittance,
 		max_intersections,
-		out_intersection_points,
+		out_intersection_depths,
 		out_intersection_weights,
-		out_intersection_gaussian_ids,
 		out_num_intersections);
 }
 

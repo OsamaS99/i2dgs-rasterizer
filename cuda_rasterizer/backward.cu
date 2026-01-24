@@ -36,6 +36,11 @@ renderCUDA(
 	const float* __restrict__ dL_dpix_roughness,
 	const float* __restrict__ dL_dpix_metallic,
 	const float* __restrict__ dL_daux,
+	// Intersection gradients
+	int max_intersections,
+	const float* __restrict__ dL_dintersection_depths,
+	const float* __restrict__ dL_dintersection_weights,
+	const int* __restrict__ num_intersections,
 	float* __restrict__ dL_dtransMat,
 	float4* __restrict__ dL_dmean2D,
 	float* __restrict__ dL_dnormal3D,
@@ -126,6 +131,13 @@ renderCUDA(
 	float last_color[C] = { 0 };
 	float last_roughness = 0;
 	float last_metallic = 0;
+	float accum_intersection_grad_norm = 0.0f;
+
+	// Intersection weight gradient tracking
+	// In backward we iterate in reverse order, so we start from last intersection
+	int intersection_idx = (inside && max_intersections > 0) ? num_intersections[pix_id] - 1 : -1;
+	// Forward-order counter to track which Gaussians were recorded as intersections
+	int forward_intersection_count = 0;
 
 	// Gradient of pixel coordinate w.r.t. normalized 
 	// screen-space viewport corrdinates (-1 to 1)
@@ -258,6 +270,32 @@ renderCUDA(
 				atomicAdd((&dL_dnormal3D[global_id * 3 + ch]), alpha * T * dL_dnormal2D[ch]);
 			}
 #endif
+
+			float current_dL_dw = 0.0f;
+			if (max_intersections > 0)
+			{
+				
+				int total_intersections = num_intersections[pix_id];
+				int storage_idx = total_intersections - 1 - forward_intersection_count;
+
+				if (storage_idx >= 0 && storage_idx < max_intersections)
+				{
+					int out_idx = storage_idx * H * W + pix_id;
+					
+					current_dL_dw = dL_dintersection_weights[out_idx];
+					float dL_dd = dL_dintersection_depths[out_idx];
+					
+					dL_dz += dL_dd;
+				}
+				forward_intersection_count++;
+			}
+
+			// Apply intersection weight gradients
+			dL_dalpha += current_dL_dw; // Direct derivative w.r.t alpha (dL_dw * T)
+			dL_dalpha -= accum_intersection_grad_norm; // Derivative from Transmittance (chain rule)
+
+			// Update accumulator for previous Gaussians
+			accum_intersection_grad_norm = accum_intersection_grad_norm * (1.f - alpha) + current_dL_dw * alpha;
 
 			dL_dalpha *= T;
 			last_alpha = alpha;
@@ -580,6 +618,11 @@ void BACKWARD::render(
 	const float* dL_dpix_roughness,
 	const float* dL_dpix_metallic,
 	const float* dL_daux,
+	// Intersection gradients
+	int max_intersections,
+	const float* dL_dintersection_depths,
+	const float* dL_dintersection_weights,
+	const int* num_intersections,
 	float* dL_dtransMat,
 	float4* dL_dmean2D,
 	float* dL_dnormal3D,
@@ -607,6 +650,10 @@ void BACKWARD::render(
 		dL_dpix_roughness,
 		dL_dpix_metallic,
 		dL_daux,
+		max_intersections,
+		dL_dintersection_depths,
+		dL_dintersection_weights,
+		num_intersections,
 		dL_dtransMat,
 		dL_dmean2D,
 		dL_dnormal3D,

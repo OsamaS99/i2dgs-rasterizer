@@ -40,6 +40,11 @@ namespace BACKWARD
 		const float* dL_dpix_roughness,
 		const float* dL_dpix_metallic,
 		const float* dL_daux,
+		// Intersection gradients
+		int max_intersections,
+		const float* dL_dintersection_depths,
+		const float* dL_dintersection_weights,
+		const int* num_intersections,
 		float* dL_dtransMat,
 		float4* dL_dmean2D,
 		float* dL_dnormal3D,

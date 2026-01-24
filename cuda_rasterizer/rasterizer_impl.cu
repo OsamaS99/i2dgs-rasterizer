@@ -207,9 +207,8 @@ int CudaRasterizer::Rasterizer::forward(
 	int* num_covered_pixels,
 	bool record_transmittance,
 	int max_intersections,
-	float* out_intersection_points,
+	float* out_intersection_depths,
 	float* out_intersection_weights,
-	int* out_intersection_gaussian_ids,
 	int* out_num_intersections,
 	int* radii,
 	bool debug)
@@ -335,9 +334,8 @@ int CudaRasterizer::Rasterizer::forward(
 		num_covered_pixels,
 		record_transmittance,
 		max_intersections,
-		out_intersection_points,
+		out_intersection_depths,
 		out_intersection_weights,
-		out_intersection_gaussian_ids,
 		out_num_intersections), debug)
 
 	return num_rendered;
@@ -368,6 +366,11 @@ void CudaRasterizer::Rasterizer::backward(
 	const float* dL_dpix_roughness,
 	const float* dL_dpix_metallic,
 	const float* dL_daux,
+	// Intersection gradients
+	int max_intersections,
+	const float* dL_dintersection_depths,
+	const float* dL_dintersection_weights,
+	const int* num_intersections,
 	float* dL_dmean2D,
 	float* dL_dnormal,
 	float* dL_dopacity,
@@ -422,6 +425,10 @@ void CudaRasterizer::Rasterizer::backward(
 		dL_dpix_roughness,
 		dL_dpix_metallic,
 		dL_daux,
+		max_intersections,
+		dL_dintersection_depths,
+		dL_dintersection_weights,
+		num_intersections,
 		dL_dtransMat,
 		(float4*)dL_dmean2D,
 		dL_dnormal,

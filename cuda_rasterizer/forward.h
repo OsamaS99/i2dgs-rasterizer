@@ -73,9 +73,8 @@ namespace FORWARD
 		int* num_covered_pixels,
 		bool record_transmittance,
 		int max_intersections,
-		float* out_intersection_points,
+		float* out_intersection_depths,
 		float* out_intersection_weights,
-		int* out_intersection_gaussian_ids,
 		int* out_num_intersections);
 }
 
